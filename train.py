@@ -66,7 +66,7 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
 
         train_loss = running_loss / len(train_loader)
 
-        print(f"Train Loss: {train_loss}, Train Accuracy: {(correct/total) * 100.0}")
+        pbar.set_description(f"Epoch {epoch} \nTraining: Loss: {train_loss:.4f} | Acc: {correct/total:.2f}")
 
 
         model.eval()
@@ -88,7 +88,7 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
 
         eval_loss = running_loss / len(val_loader)
 
-        print(f"Validation Loss: {eval_loss}, Validation Accuracy: {(correct/total) * 100.0}\n\n")    
+        pbar.set_description(f"Evaluating: Loss: {train_loss:.4f} | Acc: {correct/total:.2f}")  
 
         if eval_loss < best_val_loss:
             best_val_loss = eval_loss
