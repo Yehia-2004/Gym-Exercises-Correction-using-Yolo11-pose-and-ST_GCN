@@ -28,14 +28,14 @@ from model import Model
 
 def train_model(model, train_loader, val_loader, device, learning_rate, epochs=20):
     model.to(device)
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    criterion = nn.BCELoss()
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
 
     pbar = tqdm(range(epochs))
     for epoch in pbar:
         model.train()
         running_loss = 0.0
-        correct = 0
+        train_correct = 0
         total = 0
         
         if epoch == 11:
@@ -48,11 +48,11 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
             ])
 
         for _, inputs, labels in train_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
+            inputs, labels = inputs.to(device), labels.to(device).float()
             
             optimizer.zero_grad()
             outputs = model(inputs)
-            loss = criterion(outputs, labels)
+            loss = criterion(outputs.squeeze(-1), labels)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 2.0)
             optimizer.step()
@@ -60,34 +60,33 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
             running_loss += loss.item() * inputs.size(0)
             _, predicted = outputs.max(1)
             total += labels.size(0)
-            correct += predicted.eq(labels).sum().item()
+            train_correct += predicted.eq(labels).sum().item()
             
 
         train_loss = running_loss / len(train_loader)
-
-        pbar.set_description(f"Epoch {epoch} \nTraining: Loss: {train_loss:.4f} | Acc: {correct/total:.2f}")
-
+        train_correct /= total
 
         model.eval()
         running_loss = 0.0
-        correct = 0
+        eval_correct = 0
         total = 0
         best_val_loss = float('inf')
         for _, inputs, labels in val_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
+            inputs, labels = inputs.to(device), labels.to(device).float()
             
             with torch.no_grad():
                 outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                loss = criterion(outputs.squeeze(-1), labels)
 
             running_loss += loss.item() * inputs.size(0)
             _, predicted = outputs.max(1)
             total += labels.size(0)
-            correct += predicted.eq(labels).sum().item()  
+            eval_correct += predicted.eq(labels).sum().item()  
 
         eval_loss = running_loss / len(val_loader)
+        eval_correct /= total
 
-        pbar.set_description(f"Evaluating: Loss: {train_loss:.4f} | Acc: {correct/total:.2f}")  
+        pbar.set_description(f"Epoch: {epoch}\nTraining: Loss: {train_loss:.4f} | Acc: {train_correct:.2f}\nEvaluating: Loss: {eval_loss:.4f} | Acc: {eval_correct:.2f}\n")  
 
         if eval_loss < best_val_loss:
             best_val_loss = eval_loss
