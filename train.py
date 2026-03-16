@@ -31,6 +31,7 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
     criterion = nn.BCELoss()
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
 
+    best_val_loss = float('inf')
     pbar = tqdm(range(epochs))
     for epoch in pbar:
         model.train()
@@ -70,7 +71,6 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
         running_loss = 0.0
         eval_correct = 0
         total = 0
-        best_val_loss = float('inf')
         for _, inputs, labels in val_loader:
             inputs, labels = inputs.to(device), labels.to(device).float()
             
