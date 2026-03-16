@@ -1,3 +1,4 @@
+import numpy as np
 from pathlib import Path
 import yaml
 from easydict import EasyDict as edict
@@ -102,6 +103,8 @@ aug_config = config.AUGMENTATION
 augmentor = Augmentor(aug_config.rot_degree, aug_config.resize_ratio, aug_config.bight_range, aug_config.probablity)
 
 data_paths = list(Path(data_dir).rglob("*.mp4"))
+np.random.shuffle(data_paths)
+
 split = int(0.9 * len(data_paths))
 train_paths = data_paths[:split]
 val_paths = data_paths[split:]
