@@ -33,8 +33,6 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
 
     pbar = tqdm(range(epochs))
     for epoch in pbar:
-        print(f"Epoch: {epoch}")
-
         model.train()
         running_loss = 0.0
         correct = 0
