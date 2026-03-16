@@ -30,8 +30,9 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
     model.to(device)
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
-    
-    for epoch in tqdm(range(epochs)):
+
+    pbar = tqdm(range(epochs))
+    for epoch in pbar:
         print(f"Epoch: {epoch}")
 
         model.train()
