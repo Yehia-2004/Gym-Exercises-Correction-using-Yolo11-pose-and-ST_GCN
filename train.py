@@ -28,17 +28,18 @@ from model import Model
 
 def train_model(model, train_loader, val_loader, device, learning_rate, epochs=20):
     model.to(device)
-    criterion = nn.BCELoss()
+    # 1. Update Criterion
+    criterion = nn.BCEWithLogitsLoss() 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
 
     best_val_loss = float('inf')
     pbar = tqdm(range(epochs))
+    
     for epoch in pbar:
         model.train()
-        running_loss = 0.0
-        train_correct = 0
-        total = 0
+        running_loss, train_correct, total = 0.0, 0, 0
         
+        # Fine-tuning logic
         if epoch == 11:
             for p in model.backbone_model.parameters():
                 p.requires_grad = True
@@ -52,41 +53,41 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
             inputs, labels = inputs.to(device), labels.to(device).float()
             
             optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs.squeeze(-1), labels)
+            logits = model(inputs).squeeze() # These are now raw logits
+            loss = criterion(logits, labels)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 2.0)
             optimizer.step()
 
             running_loss += loss.item() * inputs.size(0)
-            _, predicted = outputs.max(1)
-            total += labels.size(0)
-            train_correct += predicted.eq(labels).sum().item()
             
+            # 2. Accuracy requires manual sigmoid for the threshold
+            probs = torch.sigmoid(logits) 
+            predicted = (probs > 0.5).float()
+            train_correct += (predicted == labels).sum().item()
+            total += labels.size(0)
 
-        train_loss = running_loss / len(train_loader)
-        train_correct /= total
+        train_loss = running_loss / total
+        train_acc = train_correct / total
 
         model.eval()
-        running_loss = 0.0
-        eval_correct = 0
-        total = 0
-        for _, inputs, labels in val_loader:
-            inputs, labels = inputs.to(device), labels.to(device).float()
-            
-            with torch.no_grad():
-                outputs = model(inputs)
-                loss = criterion(outputs.squeeze(-1), labels)
+        val_loss, val_correct, val_total = 0.0, 0, 0
+        with torch.no_grad():
+            for _, inputs, labels in val_loader:
+                inputs, labels = inputs.to(device), labels.to(device).float()
+                logits = model(inputs).squeeze()
+                loss = criterion(logits, labels)
 
-            running_loss += loss.item() * inputs.size(0)
-            _, predicted = outputs.max(1)
-            total += labels.size(0)
-            eval_correct += predicted.eq(labels).sum().item()  
+                val_loss += loss.item() * inputs.size(0)
+                probs = torch.sigmoid(logits)
+                predicted = (probs > 0.5).float()
+                val_correct += (predicted == labels).sum().item()
+                val_total += labels.size(0)
 
-        eval_loss = running_loss / len(val_loader)
-        eval_correct /= total
+        eval_loss = val_loss / val_total
+        eval_acc = val_correct / val_total
 
-        pbar.set_description(f"Epoch: {epoch}\nTraining: Loss: {train_loss:.4f} | Acc: {train_correct:.2f}\nEvaluating: Loss: {eval_loss:.4f} | Acc: {eval_correct:.2f}\n")  
+        pbar.set_postfix({'T_L': f"{train_loss:.3f}", 'T_A': f"{train_acc:.2f}", 'V_L': f"{eval_loss:.3f}", 'V_A': f"{eval_acc:.2f}"})
 
         if eval_loss < best_val_loss:
             best_val_loss = eval_loss
@@ -103,7 +104,7 @@ augmentor = Augmentor(aug_config.rot_degree, aug_config.resize_ratio, aug_config
 data_paths = list(Path(data_dir).rglob("*.mp4"))
 np.random.shuffle(data_paths)
 
-split = int(0.9 * len(data_paths))
+split = int(0.7 * len(data_paths))
 train_paths = data_paths[:split]
 val_paths = data_paths[split:]
 
@@ -115,6 +116,9 @@ train_loader = DataLoader(train_data, train_config.batch_size, True)
 val_loader = DataLoader(val_data, train_config.batch_size, False)
 
 backbone = ST_GCN(model_config.in_channels, model_config.hidden_channels, model_config.graph_args, True)
+for p in backbone.parameters():
+  p.requires_grad = False
+
 model = Model(model_config.num_classes, backbone)
 
 train_model(model, train_loader, val_loader, model_config.device, float(train_config.lr), train_config.epochs)
