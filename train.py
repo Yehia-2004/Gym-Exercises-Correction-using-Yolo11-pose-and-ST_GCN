@@ -92,7 +92,7 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
 
         if eval_loss < best_val_loss:
             best_val_loss = eval_loss
-            torch.save(model, "best_model.pth")
+            torch.save(model.state_dict(), "best_model.pth")
 
     return model
 
