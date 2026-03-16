@@ -31,3 +31,5 @@ class Model(nn.Module):
         x = self.fc1(x)
         x = self.fc2(x)
         return x
+    
+    
