@@ -18,7 +18,7 @@ KEYPOINTS :
     "16": "right_ankle"
 
 PATHS:
-    "data_dir": "/kaggle/input/datasets/mohamadashrafsalama/pushup"
+    "data_dir": "NPY_Features"
     "yolo_version": "yolo11m-pose.pt"
 
 AUGMENTATION:
@@ -28,15 +28,10 @@ AUGMENTATION:
     "probablity": 0.3
 
 MODEL:
-    "in_channels": 3
-    "hidden_channels": 256
-    "num_classes": 2
-    "graph_args": {'layout': 'coco', 'strategy': 'spatial'}
-    "backbone_model": "https://github.com/fendou201398/st-gcn"
+    "num_classes": 6
     "device": "cuda"
 
 TRAINING :
     "batch_size": 4
     "lr" : 1e-4
     "epochs": 10
-    

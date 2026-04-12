@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Push-Up Tracker</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <div class="dashboard">
+        <header class="header">
+            <h1>SGN <span class="accent">Push-Up</span> Tracker</h1>
+            <p>Real-time Kinematic Correction</p>
+        </header>
+
+        <main class="main-content">
+            <div class="video-container">
+                <img src="{{ url_for('video_feed') }}" alt="Live Camera Feed" id="video-stream">
+                
+                <div class="hud-overlay">
+                    <div class="hud-left">
+                        <span class="label">STATE</span>
+                        <div id="state-badge" class="badge">UP</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-panel">
+                <div class="stat-card">
+                    <h2 class="stat-title">REPS</h2>
+                    <div id="reps-value" class="stat-value">0</div>
+                </div>
+
+                <div class="feedback-card" id="feedback-card">
+                    <h2 class="stat-title">LIVE FEEDBACK</h2>
+                    <div id="feedback-msg" class="feedback-msg status-neutral">
+                        Warming up Camera...
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Poll the server for status updates
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/status');
+                const data = await response.json();
+                
+                document.getElementById('reps-value').innerText = data.reps;
+                document.getElementById('state-badge').innerText = data.state;
+                
+                const feedbackMsg = document.getElementById('feedback-msg');
+                feedbackMsg.innerText = data.feedback_msg;
+                
+                // Update feedback color class dynamically
+                feedbackMsg.className = `feedback-msg ${data.color_class}`;
+                
+            } catch (error) {
+                console.error("Error fetching status:", error);
+            }
+        }
+
+        // Poll every 100ms
+        setInterval(fetchStatus, 100);
+    </script>
+</body>
+</html>

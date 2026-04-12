@@ -8,24 +8,17 @@ class Model(nn.Module):
     def __init__(self, num_classes, backbone):
         super().__init__()
         self.backbone_model = backbone
-        in_channels = self.backbone_model.fcn.in_channels
         
-        self.fc1 = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, kernel_size=3),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.BatchNorm2d(in_channels)
-        )
         self.fc2 = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(23040, 512),
+            nn.Linear(512, 128),
+            nn.BatchNorm1d(128),
             nn.LeakyReLU(0.1),
-            nn.Linear(512, 1)
+            nn.Dropout(0.3),
+            nn.Linear(128, num_classes)
         )
 
     def forward(self, x):
-        x = self.backbone_model.extract_feature(x)[0]
-        x = x.squeeze(-1)
-        x = self.fc1(x)
+        # SGN returns a flattened feature vector [bs, 512]
+        x = self.backbone_model.extract_feature(x)
         x = self.fc2(x)
         return x
-    

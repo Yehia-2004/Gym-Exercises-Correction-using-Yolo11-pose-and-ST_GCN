@@ -4,61 +4,48 @@ import cv2
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 from torch.utils.data import Dataset
 
-from Features_extraction import Augmentor, Extractor
-
 class CorrectionData(Dataset):
-    def __init__(self, data: list, feature_extractor: Extractor, augmentor: Augmentor = None):
-        self.data = data
-        self.label_map = {"Correct sequence": 1, "Wrong sequence": 0}
-
-        self.extractor = feature_extractor
-        self.augmentor = augmentor
+    def __init__(self, data_paths, target_frames=64):
+        self.data = data_paths
+        self.label_map = {
+            "Correct sequence": 0,
+            "Sagging hips": 1,
+            "Partial range": 2,
+            "Piked hips": 3,
+            "Flared elbows": 4,
+            "Original wrong": 5,
+            "Wrong sequence": 5 # fallback for old structures
+        }
+        self.target_frames = target_frames
 
     def __len__(self): return len(self.data)
 
-    def process_video_path(self, video_path, target_frames=30):
-        cap = cv2.VideoCapture(str(video_path))
-        
-        # 1. Get total frame count (e.g., 125 or 200)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        
-        # 2. Calculate 30 evenly spaced indices
-        # np.linspace ensures we pick the first frame (0) and the last frame (total-1)
-        indices = np.linspace(0, total_frames - 1, target_frames).astype(int)
-        
-        frames = []
-        
-        for idx in indices:
-            # 3. Jump directly to the specific frame index
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            success, frame = cap.read()
-            
-            if success:
-                # Convert BGR (OpenCV) to RGB (PIL)
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frames.append(Image.fromarray(frame_rgb))
-            else:
-                raise NotImplementedError("Zeby")
-
-        cap.release()
-
-        return frames
-
     def __getitem__(self, i):
-        video_path = self.data[i]
-        frames = self.process_video_path(video_path)
-        if self.augmentor:
-            frames = self.augmentor.transform(frames)
-
-        features = self.extractor.process(frames)
+        npy_path = self.data[i]
         
-        label_name = video_path.parent.name
-        video_name = f"{label_name}/{video_path.stem}" 
-        encoded_label = self.label_map.get(label_name, 0)
+        label_name = npy_path.parent.name
+        video_name = f"{label_name}/{npy_path.stem}" 
+        encoded_label = self.label_map.get(label_name, 5) # Default to 5 if unknown
+        encoded_label = torch.tensor(encoded_label, dtype=torch.long)
 
-        # Shape: (Frames, Joints, Channels) -> (Channels, Frames, Joints)
-        features = features.permute(2,0,1).unsqueeze(-1).float()
+        features = np.load(npy_path)['features'] # Load from npz [Frames, 17, 3]
+        features = torch.tensor(features, dtype=torch.float32)
         
+        # SGN processing and reshaping
+        # Desired shape for interpolation: [3, 17, Frames]
+        features = features.permute(2, 1, 0) # [3, 17, Frames]
+        
+        # Interpolate temporally to fixed target_frames
+        # F.interpolate expects [batch, channels, length] so we reshape to [17*3, Frames]
+        c, v, t = features.shape
+        features = features.reshape(1, c*v, t)
+        features = F.interpolate(features, size=self.target_frames, mode='linear', align_corners=False)
+        features = features.reshape(c, v, self.target_frames) # [3, 17, target_frames]
+        
+        # Rearrange to ST-GCN compatible shape [C, T, V, M] (our extract_feature expects this input)
+        features = features.permute(0, 2, 1).unsqueeze(-1) # -> [3, target_frames, 17, 1]
+
         return video_name, features, encoded_label

@@ -19,17 +19,13 @@ config = edict(config)
 
 model_config = config.MODEL
 
-from setup_repo import setup
-repo_url = model_config.backbone_model
-setup(Path(repo_url))
-from net.st_gcn import Model as ST_GCN
-
+from sgn_model import SGNModel
 from model import Model
 
 def train_model(model, train_loader, val_loader, device, learning_rate, epochs=20):
     model.to(device)
-    # 1. Update Criterion
-    criterion = nn.BCEWithLogitsLoss() 
+    # 1. Update Criterion to CrossEntropy for Multi-class
+    criterion = nn.CrossEntropyLoss() 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
 
     best_val_loss = float('inf')
@@ -39,21 +35,19 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
         model.train()
         running_loss, train_correct, total = 0.0, 0, 0
         
-        # Fine-tuning logic
         if epoch == 11:
             for p in model.backbone_model.parameters():
                 p.requires_grad = True
             optimizer = optim.AdamW([
                 {'params': model.backbone_model.parameters(), 'lr': 1e-6, 'weight_decay': 0.05},
-                {'params': model.fc1.parameters(), 'lr': 1e-4},
                 {'params': model.fc2.parameters(), 'lr': 1e-4}
             ])
 
         for _, inputs, labels in train_loader:
-            inputs, labels = inputs.to(device), labels.to(device).float()
+            inputs, labels = inputs.to(device), labels.to(device).long()
             
             optimizer.zero_grad()
-            logits = model(inputs).squeeze() # These are now raw logits
+            logits = model(inputs) # Shape: [bs, num_classes]
             loss = criterion(logits, labels)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 2.0)
@@ -61,9 +55,8 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
 
             running_loss += loss.item() * inputs.size(0)
             
-            # 2. Accuracy requires manual sigmoid for the threshold
-            probs = torch.sigmoid(logits) 
-            predicted = (probs > 0.5).float()
+            # Predict by argmax
+            predicted = torch.argmax(logits, dim=1)
             train_correct += (predicted == labels).sum().item()
             total += labels.size(0)
 
@@ -74,13 +67,12 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
         val_loss, val_correct, val_total = 0.0, 0, 0
         with torch.no_grad():
             for _, inputs, labels in val_loader:
-                inputs, labels = inputs.to(device), labels.to(device).float()
-                logits = model(inputs).squeeze()
+                inputs, labels = inputs.to(device), labels.to(device).long()
+                logits = model(inputs)
                 loss = criterion(logits, labels)
 
                 val_loss += loss.item() * inputs.size(0)
-                probs = torch.sigmoid(logits)
-                predicted = (probs > 0.5).float()
+                predicted = torch.argmax(logits, dim=1)
                 val_correct += (predicted == labels).sum().item()
                 val_total += labels.size(0)
 
@@ -95,30 +87,32 @@ def train_model(model, train_loader, val_loader, device, learning_rate, epochs=2
 
     return model
 
-data_dir, yolo_version = config.PATHS.data_dir, config.PATHS.yolo_version
-feature_extractor = Extractor(yolo_version)
+data_dir = config.PATHS.data_dir
 
-aug_config = config.AUGMENTATION  
-augmentor = Augmentor(aug_config.rot_degree, aug_config.resize_ratio, aug_config.bight_range, aug_config.probablity)
+all_data_paths = list(Path(data_dir).rglob("*.npz"))
 
-data_paths = list(Path(data_dir).rglob("*.mp4"))
-np.random.shuffle(data_paths)
+# Isolate 'Original wrong' entirely to testing set as requested
+test_only_paths = [p for p in all_data_paths if p.parent.name == "Original wrong"]
+train_valid_paths = [p for p in all_data_paths if p.parent.name != "Original wrong"]
 
-split = int(0.7 * len(data_paths))
-train_paths = data_paths[:split]
-val_paths = data_paths[split:]
+np.random.shuffle(train_valid_paths)
+
+split = int(0.7 * len(train_valid_paths))
+train_paths = train_valid_paths[:split]
+val_paths = train_valid_paths[split:] + test_only_paths
 
 train_config = config.TRAINING
-train_data = CorrectionData(train_paths, feature_extractor, augmentor)
-val_data = CorrectionData(val_paths, feature_extractor)
+train_data = CorrectionData(train_paths, target_frames=64)
+val_data = CorrectionData(val_paths, target_frames=64)
 
 train_loader = DataLoader(train_data, train_config.batch_size, True)
 val_loader = DataLoader(val_data, train_config.batch_size, False)
 
-backbone = ST_GCN(model_config.in_channels, model_config.hidden_channels, model_config.graph_args, True)
+backbone = SGNModel(num_classes=model_config.num_classes, seg=64)
 for p in backbone.parameters():
   p.requires_grad = False
 
 model = Model(model_config.num_classes, backbone)
 
 train_model(model, train_loader, val_loader, model_config.device, float(train_config.lr), train_config.epochs)
+
